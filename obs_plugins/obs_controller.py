@@ -49,15 +49,28 @@ class OBSController:
     def ensure_layout(self, chat_url: str, notes_text: str, card_frame_path: str, speaker_art_path: str) -> dict[str, list[str]]:
         self._assert_unlocked()
         report = {"created": [], "updated": [], "scene_items_created": []}
+        existing_inputs = {i["inputName"] for i in self.ws.get_input_list().inputs}
         self._ensure_scene(self.names.scene)
-        self._ensure_color_source(self.names.background, 0xFF111111, report)
-        self._ensure_browser_source(self.names.chat, chat_url, 580, 660, report)
-        self._ensure_text_source(self.names.notes, notes_text, report)
-        self._ensure_image_source(self.names.speaker_frame, card_frame_path, report)
-        self._ensure_image_source(self.names.speaker_art, speaker_art_path, report)
-        self._ensure_display_capture(self.names.share, report)
+        self._ensure_color_source(self.names.background, 0xFF111111, report, existing_inputs)
+        self._ensure_browser_source(
+            self.names.chat,
+            chat_url,
+            int(DEFAULT_LAYOUT.chat_rect.width),
+            int(DEFAULT_LAYOUT.chat_rect.height),
+            report,
+            existing_inputs,
+        )
+        self._ensure_text_source(self.names.notes, notes_text, report, existing_inputs)
+        self._ensure_image_source(self.names.speaker_frame, card_frame_path, report, existing_inputs)
+        self._ensure_image_source(self.names.speaker_art, speaker_art_path, report, existing_inputs)
+        self._ensure_display_capture(self.names.share, report, existing_inputs)
 
-        self._ensure_scene_item(self.names.background, Rect(0, 0, 1920, 1080), stretch=True, report=report)
+        self._ensure_scene_item(
+            self.names.background,
+            Rect(0, 0, DEFAULT_LAYOUT.canvas_width, DEFAULT_LAYOUT.canvas_height),
+            stretch=True,
+            report=report,
+        )
         self._ensure_scene_item(self.names.share, DEFAULT_LAYOUT.share_rect, stretch=True, report=report)
         self._ensure_scene_item(self.names.chat, DEFAULT_LAYOUT.chat_rect, stretch=True, report=report)
         self._ensure_scene_item(self.names.speaker_art, DEFAULT_LAYOUT.speaker_rect, stretch=True, report=report)
@@ -193,32 +206,43 @@ class OBSController:
         if name not in scenes:
             self.ws.create_scene(name)
 
-    def _ensure_display_capture(self, name: str, report: dict[str, list[str]]) -> None:
-        self._ensure_input(name, self.kinds.monitor_capture, {}, report)
+    def _ensure_display_capture(self, name: str, report: dict[str, list[str]], existing: set[str]) -> None:
+        self._ensure_input(name, self.kinds.monitor_capture, {}, report, existing)
 
-    def _ensure_browser_source(self, name: str, url: str, width: int, height: int, report: dict[str, list[str]]) -> None:
-        self._ensure_input(name, self.kinds.browser_source, {"url": url, "width": width, "height": height}, report)
+    def _ensure_browser_source(
+        self, name: str, url: str, width: int, height: int, report: dict[str, list[str]], existing: set[str]
+    ) -> None:
+        self._ensure_input(name, self.kinds.browser_source, {"url": url, "width": width, "height": height}, report, existing)
 
-    def _ensure_text_source(self, name: str, text: str, report: dict[str, list[str]]) -> None:
+    def _ensure_text_source(self, name: str, text: str, report: dict[str, list[str]], existing: set[str]) -> None:
         for kind in self.kinds.text_source:
             try:
-                self._ensure_input(name, kind, {"text": text, "font": {"face": "Arial", "size": 28}}, report)
+                self._ensure_input(name, kind, {"text": text, "font": {"face": "Arial", "size": 28}}, report, existing)
                 return
             except Exception:
                 continue
         raise RuntimeError("Could not create text source using supported kinds")
 
-    def _ensure_image_source(self, name: str, file_path: str, report: dict[str, list[str]]) -> None:
-        self._ensure_input(name, self.kinds.image_source, {"file": str(Path(file_path).resolve())}, report)
+    def _ensure_image_source(self, name: str, file_path: str, report: dict[str, list[str]], existing: set[str]) -> None:
+        self._ensure_input(name, self.kinds.image_source, {"file": str(Path(file_path).resolve())}, report, existing)
 
-    def _ensure_color_source(self, name: str, color: int, report: dict[str, list[str]]) -> None:
-        self._ensure_input(name, self.kinds.color_source, {"color": color, "width": 1920, "height": 1080}, report)
+    def _ensure_color_source(self, name: str, color: int, report: dict[str, list[str]], existing: set[str]) -> None:
+        self._ensure_input(
+            name,
+            self.kinds.color_source,
+            {"color": color, "width": DEFAULT_LAYOUT.canvas_width, "height": DEFAULT_LAYOUT.canvas_height},
+            report,
+            existing,
+        )
 
-    def _ensure_input(self, name: str, kind: str, settings: dict[str, Any], report: dict[str, list[str]]) -> None:
-        existing = [i["inputName"] for i in self.ws.get_input_list().inputs]
+    def _ensure_input(
+        self, name: str, kind: str, settings: dict[str, Any], report: dict[str, list[str]], existing: set[str] | None = None
+    ) -> None:
+        existing = existing or {i["inputName"] for i in self.ws.get_input_list().inputs}
         if name not in existing:
             self.ws.create_input(self.names.scene, name, kind, settings, True)
             report["created"].append(name)
+            existing.add(name)
         else:
             self.ws.set_input_settings(name, settings, True)
             report["updated"].append(name)

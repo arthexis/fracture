@@ -3,18 +3,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from obs_plugins.obs_controller import OBSController
 
 
 def latest_image(mse_dir: Path) -> Path | None:
-    images = sorted(
-        [p for p in mse_dir.glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}],
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    return images[0] if images else None
+    valid_exts = {".png", ".jpg", ".jpeg", ".webp"}
+    try:
+        return max(
+            (p for p in mse_dir.iterdir() if p.suffix.lower() in valid_exts),
+            key=lambda p: p.stat().st_mtime,
+            default=None,
+        )
+    except FileNotFoundError:
+        return None
 
 
 def make_server(controller: OBSController, mse_dir: Path):

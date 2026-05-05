@@ -30,3 +30,36 @@ This repository is a starter skeleton for hosting multiple OBS Python plugins be
 ## Notes
 
 This is intentionally a foundation so we can add many Arthexis-side automations and plugin modules over time.
+
+
+## OBS overlay automation
+
+This repo now includes an automated overlay stack and MCP control server.
+
+### One-shot OBS setup script
+
+Use `scripts/setup_obs_overlay.py` to configure OBS sources/scenes automatically:
+
+```bash
+python scripts/setup_obs_overlay.py   --chat-url "https://your-chat-widget"   --card-frame ./assets/card_frame.png   --speaker-art ./assets/speaker_default.png
+```
+
+Prerequisites:
+- OBS with WebSocket enabled (default port 4455).
+- Python dependencies installed.
+
+### MCP server for model-driven control
+
+Run:
+
+```bash
+python scripts/overlay_mcp_server.py --mse-output-dir ./mse2_output
+```
+
+Tools exposed:
+- `ensure_layout`
+- `set_notes`
+- `set_chat_url`
+- `set_speaker_art`
+- `refresh_from_mse2_latest`
+- `health`

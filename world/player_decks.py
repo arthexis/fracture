@@ -13,11 +13,17 @@ from typing import Any
 
 
 DECK_ATTRIBUTE = "poker_deck"
-DECK_VERSION = 1
+DECK_VERSION = 2
 RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
-SUITS = ("S", "H", "D", "C")
+SUITS = ("D", "V", "M", "S")
 JOKERS = ("JokerA", "JokerB", "JokerC")
 FULL_DECK = tuple(f"{rank}{suit}" for suit in SUITS for rank in RANKS) + JOKERS
+LEGACY_SUIT_MIGRATION = {
+    "S": "D",  # Spades -> Daggers
+    "C": "S",  # Clubs -> Spindles
+    "H": "V",  # Hearts -> Vessels
+    "D": "M",  # Diamonds -> Masques
+}
 JOKER_DISPLAY = {
     "JokerA": "XX",
     "JokerB": "XY",
@@ -64,6 +70,26 @@ def _save_state(account, state: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
+def _state_version(state: dict[str, Any]) -> int:
+    try:
+        return int(state.get("version", 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _migrate_legacy_card(card: str) -> str:
+    if card in JOKERS or not card:
+        return card
+    rank, suit = card[:-1], card[-1]
+    if rank in RANKS and suit in LEGACY_SUIT_MIGRATION:
+        return f"{rank}{LEGACY_SUIT_MIGRATION[suit]}"
+    return card
+
+
+def _migrate_legacy_cards(cards: list[str]) -> list[str]:
+    return [_migrate_legacy_card(card) for card in cards]
+
+
 def get_or_create_deck(account) -> dict[str, Any]:
     """Return an account's deck state, creating one if missing or unusable."""
 
@@ -71,18 +97,24 @@ def get_or_create_deck(account) -> dict[str, Any]:
     if not _state_is_usable(state):
         return _save_state(account, new_deck_state())
 
-    state.setdefault("version", DECK_VERSION)
+    current_version = _state_version(state)
     state.setdefault("discard", [])
     state.setdefault("draw_count", 0)
     state.setdefault("shuffle_count", 1)
     created_at = state.setdefault("created_at", _timestamp())
     state.setdefault("shuffled_at", created_at)
 
+    if current_version < 2:
+        state["deck"] = _migrate_legacy_cards(state["deck"])
+        state["discard"] = _migrate_legacy_cards(state["discard"])
+        state["version"] = DECK_VERSION
+
     if "JokerC" not in state["deck"] and "JokerC" not in state["discard"]:
         state["deck"].append("JokerC")
         _shuffled(state["deck"])
         state["shuffled_at"] = _timestamp()
 
+    state["version"] = DECK_VERSION
     return _save_state(account, state)
 
 

@@ -40,8 +40,8 @@ Suggested state shape:
 
 ```python
 {
-    "version": 1,
-    "deck": ["AS", "10D", "JokerA", "JokerC", "..."],
+    "version": 2,
+    "deck": ["AD", "10M", "JokerA", "JokerC", "..."],
     "discard": [],
     "draw_count": 0,
     "shuffle_count": 1,
@@ -51,6 +51,13 @@ Suggested state shape:
 ```
 
 Define the top of the deck as the end of the list and draw with `pop()`.
+
+Use Arthexis suit codes instead of classic suit letters:
+
+- Spades -> Daggers (`D`)
+- Clubs -> Spindles (`S`)
+- Hearts -> Vessels (`V`)
+- Diamonds -> Masques (`M`)
 
 ## Interpretation Of "Shuffle On Start"
 
@@ -70,6 +77,8 @@ Scope:
 Implement:
 
 - `FULL_DECK`: 52 cards plus `JokerA`, `JokerB`, and `JokerC`.
+- Arthexis suits: Daggers (`D`), Spindles (`S`), Vessels (`V`), and
+  Masques (`M`).
 - `new_deck_state()` or equivalent constructor.
 - `get_or_create_deck(account)`.
 - `reset_deck(account)`.

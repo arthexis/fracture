@@ -17,8 +17,16 @@ The top card is the next card that would be drawn from the account-linked deck.
 The bottom card is the first card in the deck list. Seeing these cards does not
 draw or reshuffle the deck.
 
-Standard cards use the existing ASCII deck codes such as `AS`, `10D`, `QH`, and
-`7C`. Jokers render as:
+Standard cards use Arthexis suit codes:
+
+- Daggers: `D`
+- Spindles: `S`
+- Vessels: `V`
+- Masques: `M`
+
+Examples: `AD`, `10M`, `QV`, and `7S`.
+
+Jokers render as:
 
 - `JokerA`: `XX`
 - `JokerB`: `XY`

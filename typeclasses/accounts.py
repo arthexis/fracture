@@ -13,6 +13,8 @@ from django.contrib.auth.hashers import check_password
 from evennia.accounts.accounts import DefaultAccount, DefaultGuest
 from evennia.accounts.models import AccountDB
 
+from world import player_decks
+
 
 SUITE_DB_PATH = Path("/home/ubuntu/arthexis/db.sqlite3")
 SUITE_PRIVILEGED_PERM = "Developer"
@@ -139,9 +141,11 @@ class Account(DefaultAccount):
     def at_account_creation(self):
         super().at_account_creation()
         self.sync_arthexis_suite_permissions()
+        player_decks.get_or_create_deck(self)
 
     def at_post_login(self, session=None, **kwargs):
         self.sync_arthexis_suite_permissions()
+        player_decks.get_or_create_deck(self)
         super().at_post_login(session=session, **kwargs)
 
     def sync_arthexis_suite_permissions(self):

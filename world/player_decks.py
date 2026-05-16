@@ -18,6 +18,11 @@ RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 SUITS = ("S", "H", "D", "C")
 JOKERS = ("JokerA", "JokerB", "JokerC")
 FULL_DECK = tuple(f"{rank}{suit}" for suit in SUITS for rank in RANKS) + JOKERS
+JOKER_DISPLAY = {
+    "JokerA": "XX",
+    "JokerB": "XY",
+    "JokerC": "YY",
+}
 
 _RANDOM = SystemRandom()
 
@@ -117,6 +122,32 @@ def draw_cards(account, count: int = 1) -> list[str]:
     state["draw_count"] = int(state.get("draw_count", 0)) + len(drawn)
     _save_state(account, state)
     return drawn
+
+
+def peek_top_bottom(account) -> tuple[str | None, str | None]:
+    """Return the next card to draw and bottom card without changing state."""
+
+    deck = get_or_create_deck(account)["deck"]
+    if not deck:
+        return None, None
+    return deck[-1], deck[0]
+
+
+def format_card(card: str | None) -> str:
+    """Return a compact ASCII card display code."""
+
+    if not card:
+        return "--"
+    return JOKER_DISPLAY.get(card, card)
+
+
+def format_top_bottom(account) -> str | None:
+    """Return a [top/bottom]-ready card pair for an account deck."""
+
+    top, bottom = peek_top_bottom(account)
+    if top is None:
+        return None
+    return f"{format_card(top)}/{format_card(bottom)}"
 
 
 def remaining_count(account) -> int:

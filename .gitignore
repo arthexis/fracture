@@ -1,0 +1,68 @@
+*.py[cod]
+__pycache__/
+
+# C extensions
+*.so
+
+# Packages
+*.egg
+*.egg-info
+dist
+build
+eggs
+parts
+var
+sdist
+develop-eggs
+.installed.cfg
+lib
+lib64
+
+# Other
+*.swp
+*.bak
+*.bak-*
+*.log
+*.log.*
+*.pid
+*.restart
+*.db
+*.db3
+*.sqlite3
+*.db-journal
+*.db3-journal
+*.sqlite3-journal
+.DS_Store
+
+# Installation-specific.
+# For group efforts, comment out some or all of these.
+server/conf/secret_settings.py
+server/conf/*.bak-*
+server/.initial-superuser-credentials
+server/ssh-*
+server/logs/*
+!server/logs/README.md
+server/.static/
+server/.media/
+
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
+.coverage
+.tox
+nosetests.xml
+
+# Translations
+*.mo
+
+# Mr Developer
+.mr.developer.cfg
+.project
+.pydevproject
+
+# PyCharm config
+.idea
+
+# VSCode config
+.vscode

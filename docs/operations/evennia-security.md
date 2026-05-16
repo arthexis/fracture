@@ -33,6 +33,39 @@ play SSH gateway, UFW/fail2ban/nginx/sshd hardening, and safe validation
 workflow. The skill is intentionally node-local and is not part of this game
 repo.
 
+## Agent Harness Skills And Tools
+
+Operator-side agent harness work is split between local Codex skills and this
+node-local operational skill.
+
+Operator-local skills currently associated with this work:
+
+- `arthexis-evennia-node`: production node operations and safety checks.
+- `evennia-agent-harness`: local console-owned Evennia agent bridge prototype,
+  including master-account gating and awareness logging.
+- `evennia-game-customization`: game mechanics in the Evennia `mygame` layer,
+  such as account state, commands, cmdsets, scripts, and Attributes.
+
+Operator-local harness tools are not deployed as production services on this
+node. The current prototype lives on the operator Windows host, including:
+
+- `C:\Users\arthexis\evennia-agent.bat`
+- `C:\Users\arthexis\Repos\evennia-local\tools\evennia_agent_console.py`
+- `C:\Users\arthexis\Repos\evennia-local\mygame\world\agent_bridge.py`
+
+The live production play path remains the dedicated `sshd-play.service` on port
+`2222`, with `/usr/local/bin/arthexis-evennia-play` forcing
+`/usr/local/bin/arthexis-evennia-play-bridge` into Evennia's loopback telnet
+listener. Do not replace or couple that play bridge with a model-calling agent
+harness without an explicit proposal and operator approval.
+
+Proposal material for aligning the local harness skills/tools with this
+production node lives under:
+
+```text
+docs/proposals/agent-harness-skills-tools/
+```
+
 ## Public Network Policy
 
 UFW is active with default deny incoming and allow outgoing. The intended public

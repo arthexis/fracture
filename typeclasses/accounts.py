@@ -4,6 +4,7 @@ Account typeclasses for Arthexis Evennia.
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
 from pathlib import Path
 
@@ -21,9 +22,7 @@ SUITE_PRIVILEGED_PERM = "Developer"
 DEFAULT_PLAYER_PERM = "Player"
 PRIVILEGED_PERMS = ("Helper", "Builder", "Admin", "Developer")
 ADMIN_DEFAULT_REJECTION = "admin/admin is not a valid Evennia login."
-RESERVED_SUITE_NAME_REJECTION = (
-    "That account name is reserved for an Arthexis suite superuser."
-)
+RESERVED_SUITE_NAME_REJECTION = "That username is not available."
 
 
 def _normalized_username(username: object) -> str:
@@ -76,6 +75,11 @@ def _is_suite_superuser(username: object) -> bool:
     return bool(row and row.get("is_active") and row.get("is_superuser"))
 
 
+def _is_suite_user_active(username: object) -> bool:
+    row = _suite_user_row(username)
+    return bool(row and row.get("is_active"))
+
+
 def _suite_password_valid(username: object, password: object) -> bool:
     row = _suite_user_row(username)
     if not row or not row.get("is_active") or not row.get("is_superuser"):
@@ -108,6 +112,29 @@ class Account(DefaultAccount):
         if account:
             account.sync_arthexis_suite_permissions()
         return account, errors
+
+    @classmethod
+    def authenticate_suite_handoff(cls, username, ip="", session=None):
+        """Authenticate a trusted Arthexis suite web session without a password."""
+
+        username = cls.normalize_username(username)
+        if not _is_suite_superuser(username):
+            return None, [RESERVED_SUITE_NAME_REJECTION]
+
+        account = AccountDB.objects.get_account_from_name(username)
+        if not account:
+            account, errors = super().create(
+                username=username,
+                password=secrets.token_urlsafe(32),
+                ip=ip,
+                session=session,
+                permissions=[settings.PERMISSION_ACCOUNT_DEFAULT],
+            )
+            if not account:
+                return None, errors
+
+        account.sync_arthexis_suite_permissions()
+        return account, []
 
     @classmethod
     def authenticate(cls, username, password, ip="", **kwargs):

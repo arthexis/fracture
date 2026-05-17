@@ -28,13 +28,19 @@ class Character(ObjectParent, DefaultCharacter):
     def at_object_creation(self):
         super().at_object_creation()
         secret_traits.ensure_default_traits(self)
+        from world import workgroup_start
+
+        workgroup_start.ensure_character_home(self)
 
     def at_init(self):
         super().at_init()
         secret_traits.ensure_default_traits(self)
 
     def at_post_puppet(self, **kwargs):
+        from world import workgroup_start
+
         secret_traits.ensure_default_traits(self)
+        workgroup_start.wake_if_unplaced(self)
         super().at_post_puppet(**kwargs)
 
     def get_display_name(self, looker=None, **kwargs):

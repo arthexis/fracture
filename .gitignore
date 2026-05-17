@@ -66,3 +66,6 @@ nosetests.xml
 
 # VSCode config
 .vscode
+
+# Console-owned agent bridge runtime state
+server/agent_bridge/

@@ -22,3 +22,23 @@ class Room(ObjectParent, DefaultRoom):
     """
 
     pass
+
+
+
+class DesertDeathRoom(Room):
+    """A desert threshold that returns characters to The Waiting Room."""
+
+    def at_object_receive(self, obj, source_location, **kwargs):
+        super().at_object_receive(obj, source_location, **kwargs)
+        if getattr(obj.ndb, "desert_death_in_progress", False):
+            return
+        if not obj.is_typeclass("typeclasses.characters.Character", exact=False):
+            return
+
+        obj.ndb.desert_death_in_progress = True
+        try:
+            from world.workgroup_start import kill_in_desert
+
+            kill_in_desert(obj, self)
+        finally:
+            obj.ndb.desert_death_in_progress = False

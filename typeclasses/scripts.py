@@ -13,6 +13,10 @@ just overloads its hooks to have it perform its function.
 """
 
 from evennia.scripts.scripts import DefaultScript
+from evennia.utils import logger
+from evennia.utils.search import search_object
+
+from world import agent_bridge
 
 
 class Script(DefaultScript):
@@ -101,3 +105,42 @@ class Script(DefaultScript):
     """
 
     pass
+
+
+class AgentBridgeDeliveryScript(Script):
+    """
+    Deliver console harness responses back to in-game callers.
+
+    This is a deterministic relay only. It does not call an LLM, run skills, or
+    hold operator credentials.
+    """
+
+    def at_script_creation(self):
+        self.key = "agent_bridge_delivery"
+        self.desc = "Relays queued console-agent replies to Evennia callers."
+        self.interval = 2
+        self.persistent = True
+
+    def at_repeat(self):
+        for path, response in agent_bridge.pending_responses():
+            delivered, reason = self._deliver(response)
+            agent_bridge.mark_response_delivered(path, delivered=delivered, reason=reason)
+
+    def _deliver(self, response):
+        target = response.get("target") or {}
+        caller_dbref = target.get("caller_dbref")
+        if not caller_dbref:
+            return False, "missing caller dbref"
+
+        matches = search_object(caller_dbref)
+        if not matches:
+            return False, f"caller not found: {caller_dbref}"
+
+        prefix = "|rConsole agent refused|n" if response.get("refused") else "|cConsole agent|n"
+        try:
+            matches[0].msg(f"{prefix}: {response.get('text', '')}")
+        except Exception:
+            logger.log_trace()
+            return False, "message delivery failed"
+        return True, ""
+

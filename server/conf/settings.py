@@ -48,9 +48,23 @@ TELNET_PORTS = [4000]
 TELNET_INTERFACES = ["127.0.0.1"]
 TELNET_PROTOCOL_CLASS = "server.conf.play_telnet.PlayTelnetProtocol"
 SSH_ENABLED = False
-WEBSERVER_ENABLED = False
-WEBCLIENT_ENABLED = False
-WEBSOCKET_CLIENT_ENABLED = False
+WEBSERVER_ENABLED = True
+WEBCLIENT_ENABLED = True
+WEBSOCKET_CLIENT_ENABLED = True
+
+# Public web play is exposed only through nginx HTTPS. Keep raw Evennia web
+# and websocket ports loopback-only.
+WEBSERVER_PORTS = [(4001, 4005)]
+WEBSERVER_INTERFACES = ["127.0.0.1"]
+WEBSOCKET_CLIENT_PORT = 4002
+WEBSOCKET_CLIENT_INTERFACE = "127.0.0.1"
+WEBSOCKET_CLIENT_URL = "wss://arthexis.com/evennia-websocket/"
+
+# Keep Evennia browser sessions separate from the Arthexis suite login cookie.
+SESSION_COOKIE_NAME = "evennia_sessionid"
+WORKGROUP_PLAY_SUITE_SESSION_COOKIE_NAME = "sessionid"
+WORKGROUP_PLAY_SUITE_SESSION_URL = "http://127.0.0.1:8888/workgroup/play/session/"
+ALLOWED_HOSTS = ["arthexis.com", ".arthexis.com", "127.0.0.1", "localhost"]
 
 ######################################################################
 # Settings given in secret_settings.py override those in this file.

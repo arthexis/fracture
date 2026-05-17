@@ -30,7 +30,8 @@ def at_server_start():
     This is called every time the server starts up, regardless of
     how it was shut down.
     """
-    pass
+    _ensure_workgroup_world()
+    _ensure_agent_bridge_delivery()
 
 
 def at_server_stop():
@@ -53,6 +54,40 @@ def at_server_reload_stop():
     This is called only time the server stops before a reload.
     """
     pass
+
+
+
+def _ensure_agent_bridge_delivery():
+    """
+    Keep the deterministic console-agent response relay available in-game.
+    """
+    from evennia.utils import create, logger
+    from evennia.utils.search import search_script
+
+    try:
+        scripts = search_script("agent_bridge_delivery", exact=True)
+        if scripts:
+            script = scripts[0]
+            if not script.is_active:
+                script.start()
+            return
+        create.create_script(
+            "typeclasses.scripts.AgentBridgeDeliveryScript",
+            key="agent_bridge_delivery",
+            interval=2,
+            persistent=True,
+        )
+    except Exception:
+        logger.log_trace()
+
+
+def _ensure_workgroup_world():
+    """
+    Keep The Workgroup starting area and Intercal body available in-game.
+    """
+    from world.workgroup_start import ensure_workgroup_world_safe
+
+    ensure_workgroup_world_safe()
 
 
 def at_server_cold_start():

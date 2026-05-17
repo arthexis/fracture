@@ -8,10 +8,12 @@ The main web/urls.py includes these routes for all urls starting with `webclient
 
 from django.urls import path
 
+from web.webclient.views import webclient as arthexis_webclient
 from evennia.web.webclient.urls import urlpatterns as evennia_webclient_urlpatterns
 
 # add patterns here
 urlpatterns = [
+    path("", arthexis_webclient, name="index"),
     # path("url-pattern", imported_python_view),
     # path("url-pattern", imported_python_view),
 ]

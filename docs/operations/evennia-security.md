@@ -1,6 +1,6 @@
 # Arthexis Evennia Node Operations
 
-Last verified on 2026-05-16 UTC.
+Last verified on 2026-05-17 UTC.
 
 This document describes the live Evennia game and security configuration on this
 node. It is intentionally operational: use it before changing SSH, firewall,
@@ -29,7 +29,7 @@ A node-local Codex skill exists at:
 ```
 
 Use it in future agent sessions for work involving this Evennia deployment,
-play SSH gateway, UFW/fail2ban/nginx/sshd hardening, and safe validation
+HTTPS web play, UFW/fail2ban/nginx/sshd hardening, retired play SSH rollback, and safe validation
 workflow. The skill is intentionally node-local and is not part of this game
 repo.
 
@@ -53,11 +53,12 @@ node. The current prototype lives on the operator Windows host, including:
 - `C:\Users\arthexis\Repos\evennia-local\tools\evennia_agent_console.py`
 - `C:\Users\arthexis\Repos\evennia-local\mygame\world\agent_bridge.py`
 
-The live production play path remains the dedicated `sshd-play.service` on port
-`2222`, with `/usr/local/bin/arthexis-evennia-play` forcing
-`/usr/local/bin/arthexis-evennia-play-bridge` into Evennia's loopback telnet
-listener. Do not replace or couple that play bridge with a model-calling agent
-harness without an explicit proposal and operator approval.
+The live production play path is the HTTPS Evennia web client. Public users enter at
+`https://arthexis.com/play`, which nginx redirects to `/webclient/`, and the web
+client connects through `wss://arthexis.com/evennia-websocket/`. The old `sshd-play.service` on port `2222` has been decommissioned. Its unit, bridge, wrapper, tmpfiles config, and related password-rotation units are archived under `/root/arthexis-retired-evennia-ssh-play-20260517T184321Z` and the systemd units are masked.
+
+Do not couple the public player path with a model-calling agent harness without
+an explicit proposal and operator approval.
 
 Proposal material for aligning the local harness skills/tools with this
 production node lives under:
@@ -72,11 +73,13 @@ UFW is active with default deny incoming and allow outgoing. The intended public
 listeners are:
 
 - `22/tcp`: administrative SSH. The shared `play` user is denied here.
-- `2222/tcp`: Evennia play SSH, served by `sshd-play.service`.
-- `443/tcp`: HTTPS and WSS through nginx.
+- `443/tcp`: HTTPS and WSS through nginx, including `/play`, `/webclient/`, and
+  `/evennia-websocket/`.
 - `8443/tcp`: alternate HTTPS and WSS through nginx.
 - `80/tcp`: HTTP only for Let's Encrypt HTTP-01 renewal and HTTP to HTTPS
   redirect.
+
+Port `2222/tcp` is decommissioned and should stay closed unless the operator explicitly asks for rollback.
 
 Everything else should be loopback-only unless there is a documented reason.
 Validate with:
@@ -90,13 +93,14 @@ Expected loopback-only listeners include Redis, local DNS, Evennia telnet/web
 backend ports, and Django backend ports. At the time of verification:
 
 - Evennia telnet bridge target: `127.0.0.1:4000`
-- Evennia web/socket backend: `127.0.0.1:4006`
-- Django app backends: `127.0.0.1:8888-8891`
+- Evennia web backend: `127.0.0.1:4001` and `127.0.0.1:4005`
+- Evennia websocket backend: `127.0.0.1:4002`
+- Evennia AMP backend: `127.0.0.1:4006`
+- Suite Django backend: `0.0.0.0:8888`, protected from public access by UFW.
+- Other Django app backends may bind locally on `127.0.0.1:8889-8891`.
 - Redis: `127.0.0.1:6379` and `[::1]:6379`
 
-## SSH Split
-
-There are two SSH roles on this node.
+## SSH And Web Play
 
 The normal OpenSSH service handles administration on port `22` and explicitly
 denies the shared `play` user:
@@ -104,7 +108,20 @@ denies the shared `play` user:
 - Service: `ssh.service`
 - Config drop-in: `/etc/ssh/sshd_config.d/90-evennia-play.conf`
 
-The dedicated play SSH daemon handles public game logins on port `2222`:
+Public player ingress is now web-based:
+
+- Public URL: `https://arthexis.com/play`
+- Web client URL: `https://arthexis.com/webclient/`
+- Websocket URL: `wss://arthexis.com/evennia-websocket/`
+- Nginx live config: `/etc/nginx/sites-enabled/arthexis.conf`
+- Nginx rate limit zone: `/etc/nginx/conf.d/evennia-webplay-limits.conf`
+
+Evennia settings for this path live in
+`/home/ubuntu/evennia-game/arthexis/server/conf/settings.py` and currently bind
+the Evennia web and websocket services to loopback-only interfaces. Nginx is the
+only public frontend for those services.
+
+Retired SSH play artifacts were archived for audit under `/root/arthexis-retired-evennia-ssh-play-20260517T184321Z`. The live paths below should be absent or masked:
 
 - Service: `sshd-play.service`
 - Unit file: `/etc/systemd/system/sshd-play.service`
@@ -115,57 +132,13 @@ The dedicated play SSH daemon handles public game logins on port `2222`:
   `/run/lock/arthexis-evennia-play/sessions`
 - tmpfiles config: `/etc/tmpfiles.d/arthexis-evennia-play.conf`
 
-Important play SSH settings:
+The footer item labeled `The Workgroup` points directly to `https://arthexis.com/play`; the old `/workgroup/` page is removed.
 
-- `AllowUsers play`
-- `PasswordAuthentication yes`
-- `PubkeyAuthentication no`
-- `KbdInteractiveAuthentication no`
-- `AuthenticationMethods password`
-- `MaxAuthTries 3`
-- `LoginGraceTime 30`
-- `MaxSessions 1`
-- `MaxStartups 30:30:100`
-- `PerSourceMaxStartups 2`
-- `PerSourceNetBlockSize 32:128`
-- `DisableForwarding yes`
-- `ForceCommand /usr/local/bin/arthexis-evennia-play`
+The daily password timer is decommissioned and masked on the web-play path. Recreate it only as part of an explicit SSH-play rollback.
 
-Player command:
-
-```bash
-ssh -p 2222 play@HOSTNAME_OR_IP
-```
-
-## One Login Per Source IP
-
-The one-login policy is enforced in the forced command before the Evennia bridge
-starts. `/usr/local/bin/arthexis-evennia-play` reads the source address from
-`SSH_CONNECTION`, normalizes it into a lock-file key, and takes a non-blocking
-`flock` under `/run/lock/arthexis-evennia-play`. A second concurrent login from
-the same source IP is rejected with:
-
-```text
-Only one Arthexis Evennia play login is allowed per IP address.
-```
-
-After acquiring the lock, the wrapper exports `ARTHEXIS_PLAY_CLIENT_IP` and execs
-the Python bridge. The bridge connects to Evennia's loopback telnet port
-`127.0.0.1:4000`, records a temporary local-source-port to real-client-IP mapping
-in `/run/lock/arthexis-evennia-play/sessions`, and relays the terminal stream.
-
-Evennia uses `server/conf/play_telnet.py` via this setting:
-
-```python
-TELNET_PROTOCOL_CLASS = "server.conf.play_telnet.PlayTelnetProtocol"
-```
-
-That protocol class lets Evennia recover the real SSH client IP rather than
-seeing every play SSH session as `127.0.0.1`.
-
-This one-IP lock applies to the play SSH path. HTTPS/WSS paths do not use this
-SSH lock; if browser gameplay is exposed, enforce equivalent limits at the web
-or Evennia layer before relying on the one-login policy globally.
+The old one-login-per-source-IP lock applies only to the retired SSH wrapper.
+HTTPS/WSS browser gameplay does not use that SSH lock; use nginx rate limiting
+and Evennia/web-layer controls for browser traffic.
 
 ## Evennia Service
 
@@ -238,29 +211,25 @@ sudo systemctl reload nginx
 
 ## Fail2ban
 
-Fail2ban protects both admin SSH and play SSH:
+Fail2ban protects admin SSH. The retired `sshd-play` jail was removed during the 2026-05-17 web-play cleanup.
 
 - Config: `/etc/fail2ban/jail.d/arthexis-ssh.local`
 - Admin jail: `sshd`, port `22`, `maxretry = 5`
-- Play jail: `sshd-play`, port `2222`, aggressive sshd filter,
-  `maxretry = 3`, `findtime = 10m`, `bantime = 4h`
-- Play journal match: `_SYSTEMD_UNIT=sshd-play.service + _COMM=sshd`
 
 Useful commands:
 
 ```bash
 sudo fail2ban-client status
 sudo fail2ban-client status sshd
-sudo fail2ban-client status sshd-play
 sudo journalctl -u fail2ban -n 100 --no-pager
 ```
 
 ## Capacity Notes
 
-The play SSH daemon limits unauthenticated connection pressure with
-`MaxStartups 30:30:100` and `PerSourceMaxStartups 2`. Authenticated play sessions
-are limited by the one-session-per-source-IP lock, system resources, Evennia, and
-the database.
+Web play is exposed through nginx with a dedicated request limit zone for the
+Evennia web client and websocket paths. Evennia itself still backs the game
+traffic, so capacity is bounded by the Evennia server, web socket handling,
+system resources, and the database.
 
 There is no load-test-backed player capacity number for this node. Treat the
 current setup as suitable for low to moderate traffic until tested. PostgreSQL
@@ -274,7 +243,8 @@ Before editing live security configuration:
 
 ```bash
 git -C /home/ubuntu/evennia-game/arthexis status --short --branch
-sudo systemctl is-active ssh sshd-play evennia fail2ban nginx
+sudo systemctl is-active ssh evennia fail2ban nginx
+sudo systemctl is-enabled sshd-play arthexis-workgroup-play-password.service arthexis-workgroup-play-password.timer || true
 sudo ufw status verbose
 sudo ss -ltnp
 ```
@@ -283,14 +253,14 @@ After changing SSH, nginx, firewall, fail2ban, or Evennia settings:
 
 ```bash
 sudo sshd -t
-sudo sshd -t -f /etc/ssh/sshd_config_play
+sudo sshd -t -f /etc/ssh/sshd_config_play  # only for retired play SSH rollback edits
 sudo nginx -t
-sudo systemctl restart sshd-play
 sudo systemctl reload ssh
 sudo systemctl restart fail2ban
 sudo systemctl reload nginx
 sudo systemctl reload evennia
-sudo systemctl is-active ssh sshd-play evennia fail2ban nginx
+sudo systemctl is-active ssh evennia fail2ban nginx
+sudo systemctl is-enabled sshd-play arthexis-workgroup-play-password.service arthexis-workgroup-play-password.timer || true
 sudo fail2ban-client status
 sudo ufw status verbose
 sudo ss -ltnp

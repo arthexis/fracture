@@ -19,6 +19,7 @@ lib
 lib64
 
 # Other
+.venv/
 *.swp
 *.bak
 *.bak-*

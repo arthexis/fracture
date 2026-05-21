@@ -26,19 +26,28 @@ class Room(ObjectParent, DefaultRoom):
 
 
 class DesertDeathRoom(Room):
-    """A desert threshold that returns characters to The Waiting Room."""
+    """A desert threshold that burns cards before returning characters home."""
+
+    exposure_script = "typeclasses.scripts.DesertSunExposureScript"
+    exposure_key = "desert_sun_exposure"
 
     def at_object_receive(self, obj, source_location, **kwargs):
         super().at_object_receive(obj, source_location, **kwargs)
-        if getattr(obj.ndb, "desert_death_in_progress", False):
-            return
         if not obj.is_typeclass("typeclasses.characters.Character", exact=False):
             return
 
-        obj.ndb.desert_death_in_progress = True
-        try:
-            from world.workgroup_start import kill_in_desert
+        if not obj.scripts.has(self.exposure_key):
+            obj.scripts.add(self.exposure_script, key=self.exposure_key)
+        else:
+            obj.scripts.start(self.exposure_key)
+        obj.msg("The desert sun settles on you like a verdict.")
 
-            kill_in_desert(obj, self)
-        finally:
-            obj.ndb.desert_death_in_progress = False
+    def at_object_leave(self, obj, target_location, move_type="move", **kwargs):
+        super().at_object_leave(obj, target_location, move_type=move_type, **kwargs)
+        if not obj.is_typeclass("typeclasses.characters.Character", exact=False):
+            return
+
+        try:
+            obj.scripts.stop(self.exposure_key)
+        except Exception:
+            pass

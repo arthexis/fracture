@@ -7,17 +7,37 @@ cards without exposing deck order to ordinary players.
 
 from __future__ import annotations
 
+import copy
+from collections.abc import MutableMapping, MutableSequence
 from datetime import UTC, datetime
 from random import SystemRandom
 from typing import Any
 
 
 DECK_ATTRIBUTE = "poker_deck"
-DECK_VERSION = 2
+DECK_VERSION = 3
 RANKS = ("A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K")
 SUITS = ("D", "V", "M", "S")
 JOKERS = ("JokerA", "JokerB", "JokerC")
 FULL_DECK = tuple(f"{rank}{suit}" for suit in SUITS for rank in RANKS) + JOKERS
+CARD_VALUES = {
+    "A": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "8": 8,
+    "9": 9,
+    "10": 10,
+    "J": 11,
+    "Q": 12,
+    "K": 13,
+    "JokerA": 15,
+    "JokerB": 15,
+    "JokerC": 15,
+}
 LEGACY_SUIT_MIGRATION = {
     "S": "D",  # Spades -> Daggers
     "C": "S",  # Clubs -> Spindles
@@ -50,7 +70,10 @@ def new_deck_state() -> dict[str, Any]:
         "version": DECK_VERSION,
         "deck": _shuffled(list(FULL_DECK)),
         "discard": [],
+        "burned": [],
         "draw_count": 0,
+        "burn_count": 0,
+        "desert_shield_minutes": 0,
         "shuffle_count": 1,
         "created_at": now,
         "shuffled_at": now,
@@ -59,15 +82,16 @@ def new_deck_state() -> dict[str, Any]:
 
 def _state_is_usable(state: object) -> bool:
     return (
-        isinstance(state, dict)
-        and isinstance(state.get("deck"), list)
-        and isinstance(state.get("discard"), list)
+        isinstance(state, MutableMapping)
+        and isinstance(state.get("deck"), MutableSequence)
+        and isinstance(state.get("discard"), MutableSequence)
     )
 
 
 def _save_state(account, state: dict[str, Any]) -> dict[str, Any]:
-    setattr(account.db, DECK_ATTRIBUTE, state)
-    return state
+    saved_state = copy.deepcopy(state)
+    setattr(account.db, DECK_ATTRIBUTE, saved_state)
+    return saved_state
 
 
 def _state_version(state: dict[str, Any]) -> int:
@@ -99,7 +123,10 @@ def get_or_create_deck(account) -> dict[str, Any]:
 
     current_version = _state_version(state)
     state.setdefault("discard", [])
+    state.setdefault("burned", [])
     state.setdefault("draw_count", 0)
+    state.setdefault("burn_count", 0)
+    state.setdefault("desert_shield_minutes", 0)
     state.setdefault("shuffle_count", 1)
     created_at = state.setdefault("created_at", _timestamp())
     state.setdefault("shuffled_at", created_at)
@@ -109,7 +136,15 @@ def get_or_create_deck(account) -> dict[str, Any]:
         state["discard"] = _migrate_legacy_cards(state["discard"])
         state["version"] = DECK_VERSION
 
-    if "JokerC" not in state["deck"] and "JokerC" not in state["discard"]:
+    if current_version < 3:
+        state["burned"] = _migrate_legacy_cards(state["burned"])
+        state["version"] = DECK_VERSION
+
+    if (
+        "JokerC" not in state["deck"]
+        and "JokerC" not in state["discard"]
+        and "JokerC" not in state["burned"]
+    ):
         state["deck"].append("JokerC")
         _shuffled(state["deck"])
         state["shuffled_at"] = _timestamp()
@@ -156,6 +191,65 @@ def draw_cards(account, count: int = 1) -> list[str]:
     return drawn
 
 
+def card_value(card: str | None) -> int:
+    """Return the desert-shield minute value for a card."""
+
+    if not card:
+        return 0
+    if card in JOKERS:
+        return CARD_VALUES[card]
+    return CARD_VALUES.get(card[:-1], 0)
+
+
+def apply_desert_sun_minute(account) -> dict[str, Any]:
+    """
+    Resolve one minute of desert sun exposure.
+
+    If the account has shield minutes, one minute is consumed. Otherwise a
+    random card is burned from the live deck into the persistent burned pile.
+    Discarded cards are not reshuffled into the deck for desert exposure.
+    """
+
+    state = get_or_create_deck(account)
+    shield_minutes = max(0, int(state.get("desert_shield_minutes", 0)))
+    if shield_minutes:
+        state["desert_shield_minutes"] = shield_minutes - 1
+        _save_state(account, state)
+        return {
+            "action": "shield",
+            "shield_minutes": state["desert_shield_minutes"],
+            "dead": False,
+        }
+
+    deck = state["deck"]
+    if not deck:
+        return {
+            "action": "dead",
+            "card": None,
+            "value": 0,
+            "remaining": 0,
+            "shield_minutes": 0,
+            "dead": True,
+        }
+
+    card = deck.pop(_RANDOM.randrange(len(deck)))
+    value = card_value(card)
+    state["burned"].append(card)
+    state["burn_count"] = int(state.get("burn_count", 0)) + 1
+    state["desert_shield_minutes"] = shield_minutes + value
+    state["last_burned_at"] = _timestamp()
+    dead = not deck
+    _save_state(account, state)
+    return {
+        "action": "burn_dead" if dead else "burn",
+        "card": card,
+        "value": value,
+        "remaining": len(deck),
+        "shield_minutes": state["desert_shield_minutes"],
+        "dead": dead,
+    }
+
+
 def peek_top_bottom(account) -> tuple[str | None, str | None]:
     """Return the next card to draw and bottom card without changing state."""
 
@@ -192,3 +286,9 @@ def discard_count(account) -> int:
     """Return the number of drawn cards waiting in discard."""
 
     return len(get_or_create_deck(account)["discard"])
+
+
+def burned_count(account) -> int:
+    """Return the number of permanently sun-burned cards."""
+
+    return len(get_or_create_deck(account)["burned"])

@@ -9,13 +9,17 @@ from evennia.utils.search import search_object
 
 WAITING_ROOM = "The Waiting Room"
 EXAM_ROOM = "Examination Room A"
+PARKING_LOT = "Small Parking Lot"
 DESERT_STOP = "A Solitary Bus Stop"
 INTERCAL = "Intercal"
+SERVICE_VAN = "White Service Van"
+ELECTRIC_CHARGER = "Electric Charger"
 
 ROOM_TYPECLASS = "typeclasses.rooms.Room"
 DESERT_TYPECLASS = "typeclasses.rooms.DesertDeathRoom"
 EXIT_TYPECLASS = "typeclasses.exits.Exit"
 CHARACTER_TYPECLASS = "typeclasses.characters.Character"
+OBJECT_TYPECLASS = "typeclasses.objects.Object"
 
 WAITING_ROOM_DESC = """
 The Waiting Room looks like it belongs equally to a clinic and to a
@@ -25,7 +29,7 @@ steady, and almost musical if you let your eyes close for a moment.
 
 A small area of plastic chairs and tired couches faces a low table stacked
 with old magazines and blank intake forms. One door is labeled Examination
-Room A. Another points Out to the Desert.
+Room A. Another leads Out to the Parking Lot.
 """.strip()
 
 EXAM_ROOM_DESC = """
@@ -38,6 +42,37 @@ DESERT_STOP_DESC = """
 A solitary bus stop stands outside the building in the middle of the desert.
 The sign is sun-faded, the schedule is blank, and the road runs straight until
 heat shimmer edits it out of view.
+""".strip()
+
+PARKING_LOT_DESC = """
+The outside of the building gives way to a small parking lot half swallowed by
+windblown dust. The asphalt is cracked into islands. Painted spaces fade under
+a skin of pale sand.
+
+A white service van sits near the building with its nose angled toward the
+open desert. Beside it stands an electric charger: a waist-high pedestal, a
+tethered cable in its holster, and a card reader waiting under a scratched
+plastic lens.
+""".strip()
+
+SERVICE_VAN_DESC = """
+The small white service van has no company markings left, only rectangular
+ghosts where decals used to be. The doors are unlocked. Inside, the keys are
+already in the ignition, fused into the switch by a ring of bubbled plastic.
+
+The instrument cluster wakes just enough to report 1% battery. Two charging
+covers are visible: the closer one faces the charger, but its inlet is the
+wrong shape for the tethered cable.
+""".strip()
+
+ELECTRIC_CHARGER_DESC = """
+The charger is a compact DC unit with a small monochrome display, a contactless
+card target, a stop button under a cracked membrane, and one heavy tethered
+cable. The screen reads AVAILABLE, then PRESENT CARD, then 0.00 kW.
+
+The plug is real enough: thick pins, a latch, and enough weight that it wants
+both hands. It will not energize until it sees a vehicle connection and a valid
+charge card.
 """.strip()
 
 INTERCAL_DESC = """
@@ -66,6 +101,20 @@ def _first_exact(key: str):
     return matches[0] if matches else None
 
 
+def _default_home_ready() -> bool:
+    """Return False during Evennia's first-boot setup before Limbo exists."""
+
+    from django.conf import settings
+    from evennia.objects.models import ObjectDB
+
+    default_home = str(getattr(settings, "DEFAULT_HOME", "") or "")
+    try:
+        home_id = int(default_home.lstrip("#"))
+    except ValueError:
+        return True
+    return ObjectDB.objects.filter(id=home_id).exists()
+
+
 def _ensure_aliases(obj, aliases: tuple[str, ...]) -> None:
     if aliases:
         obj.aliases.add(list(aliases))
@@ -80,6 +129,36 @@ def _ensure_room(key: str, description: str, typeclass: str = ROOM_TYPECLASS):
     room.db.desc = description
     room.tags.add("workgroup_start", category="world")
     return room
+
+
+def _ensure_scenery(
+    location,
+    key: str,
+    description: str,
+    aliases: tuple[str, ...] = (),
+    typeclass: str = OBJECT_TYPECLASS,
+):
+    obj = _first_exact(key)
+    if obj is None:
+        obj = create.create_object(typeclass, key=key, location=location)
+    if obj.typeclass_path != typeclass:
+        obj.swap_typeclass(typeclass, clean_attributes=False)
+    obj.location = location
+    obj.home = location
+    obj.db.desc = description
+    obj.locks.add("get:false()")
+    _ensure_aliases(obj, aliases)
+    obj.tags.add("workgroup_start", category="world")
+    return obj
+
+
+def _rename_exit(location, old_key: str, new_key: str) -> None:
+    if _first_exact(new_key):
+        return
+    for obj in location.contents:
+        if obj.key.lower() == old_key.lower() and obj.destination:
+            obj.key = new_key
+            return
 
 
 def _ensure_exit(location, key: str, destination, aliases: tuple[str, ...] = ()):
@@ -116,12 +195,16 @@ def ensure_intercal_body(waiting_room=None):
 
 
 def ensure_character_home(character) -> None:
+    if not _default_home_ready():
+        return
     waiting_room, _exam_room, _desert_stop = ensure_workgroup_world(create_intercal=False)
     if character.home != waiting_room:
         character.home = waiting_room
 
 
 def wake_if_unplaced(character) -> None:
+    if not _default_home_ready():
+        return
     waiting_room, _exam_room, _desert_stop = ensure_workgroup_world(create_intercal=False)
     if character.home != waiting_room:
         character.home = waiting_room
@@ -155,9 +238,26 @@ def kill_in_desert(character, death_room) -> None:
 def ensure_workgroup_world(*, create_intercal: bool = True):
     """Create or repair The Workgroup starting rooms and Intercal body."""
 
+    if not _default_home_ready():
+        raise RuntimeError("Default home is not ready; defer Workgroup world setup.")
+
     waiting_room = _ensure_room(WAITING_ROOM, WAITING_ROOM_DESC)
     exam_room = _ensure_room(EXAM_ROOM, EXAM_ROOM_DESC)
+    parking_lot = _ensure_room(PARKING_LOT, PARKING_LOT_DESC)
     desert_stop = _ensure_room(DESERT_STOP, DESERT_STOP_DESC, DESERT_TYPECLASS)
+
+    _ensure_scenery(
+        parking_lot,
+        SERVICE_VAN,
+        SERVICE_VAN_DESC,
+        aliases=("van", "service van", "vehicle", "keys", "ignition"),
+    )
+    _ensure_scenery(
+        parking_lot,
+        ELECTRIC_CHARGER,
+        ELECTRIC_CHARGER_DESC,
+        aliases=("charger", "charge point", "station", "evse", "cable", "rfid reader"),
+    )
 
     _ensure_exit(
         waiting_room,
@@ -166,13 +266,27 @@ def ensure_workgroup_world(*, create_intercal: bool = True):
         aliases=("exam", "examination", "room a", "a"),
     )
     _ensure_exit(exam_room, WAITING_ROOM, waiting_room, aliases=("waiting", "back"))
+    _rename_exit(waiting_room, "Out to the Desert", "Out to the Parking Lot")
     _ensure_exit(
         waiting_room,
-        "Out to the Desert",
-        desert_stop,
-        aliases=("out", "desert", "bus stop"),
+        "Out to the Parking Lot",
+        parking_lot,
+        aliases=("out", "outside", "parking", "lot"),
     )
-    _ensure_exit(desert_stop, "Back Inside", waiting_room, aliases=("inside", "back"))
+    _ensure_exit(parking_lot, "Back Inside", waiting_room, aliases=("inside", "back"))
+    _ensure_exit(
+        parking_lot,
+        "Into the Desert",
+        desert_stop,
+        aliases=("desert", "bus stop", "road"),
+    )
+    _rename_exit(desert_stop, "Back Inside", "Back to the Parking Lot")
+    _ensure_exit(
+        desert_stop,
+        "Back to the Parking Lot",
+        parking_lot,
+        aliases=("parking", "lot", "back"),
+    )
 
     if create_intercal:
         ensure_intercal_body(waiting_room)

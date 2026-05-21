@@ -65,7 +65,11 @@ def _ensure_agent_bridge_delivery():
     from evennia.utils.search import search_script
 
     try:
-        scripts = search_script("agent_bridge_delivery", exact=True)
+        scripts = [
+            script
+            for script in search_script("agent_bridge_delivery")
+            if script.key == "agent_bridge_delivery"
+        ]
         if scripts:
             script = scripts[0]
             if not script.is_active:

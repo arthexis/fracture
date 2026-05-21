@@ -18,6 +18,7 @@ from evennia import default_cmds
 
 from commands.agent_bridge import CmdAgent
 from commands.deck import CmdDeck
+from commands.parking_lot import CmdChargePoint, CmdVan
 from commands.unloggedin import CmdUnconnectedCreate
 
 
@@ -36,6 +37,8 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         """
         super().at_cmdset_creation()
         self.add(CmdAgent())
+        self.add(CmdVan())
+        self.add(CmdChargePoint())
 
 
 class AccountCmdSet(default_cmds.AccountCmdSet):

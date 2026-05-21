@@ -144,3 +144,77 @@ class AgentBridgeDeliveryScript(Script):
             return False, "message delivery failed"
         return True, ""
 
+
+class DesertSunExposureScript(Script):
+    """Burn a character's account deck while they remain under the desert sun."""
+
+    def at_script_creation(self):
+        self.key = "desert_sun_exposure"
+        self.desc = "Tracks per-minute desert sun exposure for a character."
+        self.interval = 60
+        self.start_delay = True
+        self.persistent = True
+
+    def is_valid(self):
+        character = self.obj
+        if not character or not character.is_typeclass(
+            "typeclasses.characters.Character", exact=False
+        ):
+            return False
+        location = getattr(character, "location", None)
+        return bool(
+            location
+            and location.is_typeclass("typeclasses.rooms.DesertDeathRoom", exact=False)
+        )
+
+    def at_repeat(self):
+        character = self.obj
+        if not character or not self.is_valid():
+            self.stop()
+            return
+
+        account = getattr(character, "account", None) or getattr(character, "db_account", None)
+        if not account:
+            from evennia.accounts.models import AccountDB
+
+            account = AccountDB.objects.get_account_from_name(character.key)
+        if not account:
+            return
+
+        from world import player_decks
+
+        result = player_decks.apply_desert_sun_minute(account)
+        if result["action"] == "shield":
+            minutes = result["shield_minutes"]
+            character.msg(
+                f"The burned-card shield takes the sun for you. "
+                f"{minutes} minute(s) remain."
+            )
+            return
+
+        location = character.location
+        card = result.get("card")
+        card_text = player_decks.format_card(card)
+        if result["dead"]:
+            if card:
+                character.msg(
+                    f"The sun burns {card_text} out of your deck. It was the last card."
+                )
+            from world.workgroup_start import kill_in_desert
+
+            kill_in_desert(character, location)
+            self.stop()
+            return
+
+        value = result["value"]
+        remaining = result["remaining"]
+        character.msg(
+            f"The sun burns {card_text} out of your deck. Its value shields you "
+            f"for {value} minute(s). {remaining} card(s) remain."
+        )
+        if location:
+            location.msg_contents(
+                f"Sunlight flashes around {character.key}; something unseen burns away.",
+                exclude=character,
+            )
+
